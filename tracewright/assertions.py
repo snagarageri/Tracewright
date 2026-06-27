@@ -219,6 +219,119 @@ Did the agent meet this criteria? Respond with JSON only:
             return AssertionResult(False, f"LLM judge failed: {exc}", self.name)
 
 
+class DidNotCallTool(Assertion):
+    def __init__(self, tool_name: str):
+        self.tool_name = tool_name
+
+    @property
+    def name(self) -> str:
+        return "must_not_call"
+
+    def check(self, trajectory: Trajectory) -> AssertionResult:
+        violations = trajectory.calls_to(self.tool_name)
+        if not violations:
+            return AssertionResult(True, f"Tool '{self.tool_name}' was never called", self.name)
+        detail = ", ".join(f"args={tc.args}" for tc in violations)
+        return AssertionResult(
+            False,
+            f"Tool '{self.tool_name}' must not be called but was invoked "
+            f"{len(violations)} time(s): [{detail}]",
+            self.name,
+        )
+
+
+class ToolOrder(Assertion):
+    def __init__(self, sequence: list[str]):
+        self.sequence = sequence
+
+    @property
+    def name(self) -> str:
+        return "tool_order"
+
+    def check(self, trajectory: Trajectory) -> AssertionResult:
+        names = trajectory.tool_names
+        it = iter(names)
+        passed = all(needle in it for needle in self.sequence)
+        if passed:
+            return AssertionResult(
+                True,
+                f"Tools called in required order {self.sequence}",
+                self.name,
+            )
+        return AssertionResult(
+            False,
+            f"Required tool order {self.sequence} not found as a subsequence in {names}",
+            self.name,
+        )
+
+
+class NoToolLoops(Assertion):
+    @property
+    def name(self) -> str:
+        return "no_tool_loops"
+
+    def check(self, trajectory: Trajectory) -> AssertionResult:
+        if not trajectory.has_tool_loop():
+            return AssertionResult(True, "No tool loops detected", self.name)
+        calls = trajectory.tool_calls
+        for i in range(len(calls) - 1):
+            if calls[i].name == calls[i + 1].name and calls[i].args == calls[i + 1].args:
+                return AssertionResult(
+                    False,
+                    f"Tool loop detected: '{calls[i].name}' called twice in a row "
+                    f"with identical args {calls[i].args}",
+                    self.name,
+                )
+        return AssertionResult(False, "Tool loop detected", self.name)  # pragma: no cover
+
+
+class MaxCost(Assertion):
+    def __init__(self, max_usd: float):
+        self.max_usd = max_usd
+
+    @property
+    def name(self) -> str:
+        return "max_cost_usd"
+
+    def check(self, trajectory: Trajectory) -> AssertionResult:
+        actual = trajectory.total_cost_usd()
+        if actual <= self.max_usd:
+            return AssertionResult(
+                True,
+                f"Total cost ${actual:.4f} is within limit ${self.max_usd:.4f}",
+                self.name,
+            )
+        return AssertionResult(
+            False,
+            f"Total cost ${actual:.4f} exceeds limit ${self.max_usd:.4f}",
+            self.name,
+        )
+
+
+class CallCount(Assertion):
+    def __init__(self, tool_name: str, count: int):
+        self.tool_name = tool_name
+        self.count = count
+
+    @property
+    def name(self) -> str:
+        return "call_count"
+
+    def check(self, trajectory: Trajectory) -> AssertionResult:
+        actual = len(trajectory.calls_to(self.tool_name))
+        if actual == self.count:
+            return AssertionResult(
+                True,
+                f"Tool '{self.tool_name}' called exactly {self.count} time(s)",
+                self.name,
+            )
+        return AssertionResult(
+            False,
+            f"Tool '{self.tool_name}' expected {self.count} call(s), got {actual}",
+            self.name,
+        )
+
+
 _ASSERTION_REGISTRY: dict[str, type[Assertion]] = {
     "no_error": NoError,
     "output_contains": OutputContains,
@@ -227,6 +340,11 @@ _ASSERTION_REGISTRY: dict[str, type[Assertion]] = {
     "tool_called_with": ToolCalledWith,
     "step_count": StepCount,
     "llm_judge": LLMJudge,
+    "must_not_call": DidNotCallTool,
+    "tool_order": ToolOrder,
+    "no_tool_loops": NoToolLoops,
+    "max_cost_usd": MaxCost,
+    "call_count": CallCount,
 }
 
 
@@ -250,5 +368,15 @@ def build_assertion(spec: dict[str, Any]) -> Assertion:
         return StepCount(spec.get("min"), spec.get("max"))
     if atype == "llm_judge":
         return LLMJudge(spec["criteria"], spec.get("model", "gpt-4o-mini"))
+    if atype == "must_not_call":
+        return DidNotCallTool(spec["name"])
+    if atype == "tool_order":
+        return ToolOrder(spec["sequence"])
+    if atype == "no_tool_loops":
+        return NoToolLoops()
+    if atype == "max_cost_usd":
+        return MaxCost(spec["max"])
+    if atype == "call_count":
+        return CallCount(spec["name"], spec["count"])
 
     raise ValueError(f"Unhandled assertion type: {atype}")
