@@ -91,7 +91,7 @@ class CalledTool(Assertion):
         return "called_tool"
 
     def check(self, trajectory: Trajectory) -> AssertionResult:
-        called = self.tool_name in trajectory.tool_names
+        called = bool(trajectory.calls_to(self.tool_name))
         msg = (
             f"Tool '{self.tool_name}' was called"
             if called
@@ -110,7 +110,7 @@ class ToolCalledWith(Assertion):
         return "tool_called_with"
 
     def check(self, trajectory: Trajectory) -> AssertionResult:
-        matching_calls = [tc for tc in trajectory.tool_calls if tc.name == self.tool_name]
+        matching_calls = trajectory.calls_to(self.tool_name)
         if not matching_calls:
             return AssertionResult(
                 False,
@@ -142,7 +142,7 @@ class StepCount(Assertion):
         return "step_count"
 
     def check(self, trajectory: Trajectory) -> AssertionResult:
-        count = len(trajectory.steps)
+        count = trajectory.step_count()
         if self.min_steps is not None and count < self.min_steps:
             return AssertionResult(
                 False,

@@ -12,6 +12,8 @@ class ToolCall(BaseModel):
     args: dict[str, Any] = Field(default_factory=dict)
     result: Any = None
     error: Optional[str] = None
+    latency_ms: Optional[float] = None
+    cost_usd: Optional[float] = None
 
 
 class Step(BaseModel):
@@ -49,3 +51,25 @@ class Trajectory(BaseModel):
     @property
     def thoughts(self) -> list[str]:
         return [s.content for s in self.steps if s.type == "thought"]
+
+    def calls_to(self, tool_name: str) -> list[ToolCall]:
+        return [tc for tc in self.tool_calls if tc.name == tool_name]
+
+    def has_tool_loop(self) -> bool:
+        calls = self.tool_calls
+        for i in range(len(calls) - 1):
+            if calls[i].name == calls[i + 1].name and calls[i].args == calls[i + 1].args:
+                return True
+        return False
+
+    def total_cost_usd(self) -> float:
+        return sum(tc.cost_usd for tc in self.tool_calls if tc.cost_usd is not None)
+
+    def total_latency_ms(self) -> float:
+        return sum(tc.latency_ms for tc in self.tool_calls if tc.latency_ms is not None)
+
+    def step_count(self) -> int:
+        return len(self.steps)
+
+    def first_tool_call(self) -> Optional[ToolCall]:
+        return next(iter(self.tool_calls), None)
