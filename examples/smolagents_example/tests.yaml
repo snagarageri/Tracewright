@@ -1,0 +1,36 @@
+agent:
+  module: agent          # agent.py relative to this file
+  factory: create_agent
+  adapter: smolagents
+
+scenarios:
+  - name: weather query — Paris
+    input: "What's the weather like in Paris right now?"
+    assertions:
+      - type: no_error
+      - type: called_tool
+        name: get_weather
+      - type: tool_called_with
+        name: get_weather
+        args:
+          city: Paris
+      - type: output_contains
+        value: Paris
+
+  - name: weather query — London
+    input: "Is it raining in London?"
+    assertions:
+      - type: no_error
+      - type: called_tool
+        name: get_weather
+      - type: step_count
+        max: 10
+
+  - name: multi-city comparison
+    input: "Compare the weather in Tokyo and Paris."
+    assertions:
+      - type: no_error
+      - type: output_contains
+        value: Tokyo
+      - type: output_contains
+        value: Paris

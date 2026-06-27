@@ -1,0 +1,38 @@
+agent:
+  module: agent          # agent.py relative to this file
+  factory: create_agent
+  adapter: generic
+
+scenarios:
+  - name: uppercase conversion
+    input: "uppercase hello world"
+    assertions:
+      - type: no_error
+      - type: called_tool
+        name: text_transform
+      - type: output_contains
+        value: "HELLO WORLD"
+      - type: step_count
+        min: 1
+        max: 10
+
+  - name: word count
+    input: "count the words in this sentence"
+    assertions:
+      - type: no_error
+      - type: called_tool
+        name: word_count
+      - type: output_contains
+        value: "5"
+      - type: step_count
+        min: 1
+        max: 10
+
+  - name: echo fallback
+    input: "just pass this through"
+    assertions:
+      - type: no_error
+      - type: called_tool
+        name: echo
+      - type: output_contains
+        value: "just pass this through"
